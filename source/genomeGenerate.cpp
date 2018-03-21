@@ -13,7 +13,7 @@
 #include "sjdbInsertJunctions.h"
 #include "genomeScanFastaFiles.h"
 #include "genomeSAindex.h"
-
+#include <bitset>
 #include "serviceFuns.cpp"
 #include "streamFuns.h"
 #include "SequenceFuns.h"
@@ -30,11 +30,25 @@ inline int funCompareSuffixes ( const void *a, const void *b){
     uint jj=0;
     int  ii=0;
     uint va=0,vb=0;
+    va = 5;
+    va = 0;
+
+
     uint8 *va1, *vb1;
 
     while (jj < globalL) {
         va=*(ga-jj);
         vb=*(gb-jj);
+
+
+        uint vat1 = ((va)^0x0505050505050505);
+        uint vat2 = ((va)^0x0505050505050505) -0x0101010101010101;
+        uint vat3 = 0x0101010101010101;
+        uint vat4 = ((va)^0x0505050505050505) +0x0101010101010101;
+        uint vat5 = ~((va)^0x0505050505050505);
+        uint vat6 = ~((va)^0x0505050505050505) & 0x8080808080808080;
+        uint vat7 ((((va)^0x0505050505050505) - 0x0101010101010101) & ~((va)^0x0505050505050505) & 0x8080808080808080);
+
 
         #define has5(v) ((((v)^0x0505050505050505) - 0x0101010101010101) & ~((v)^0x0505050505050505) & 0x8080808080808080)
 
@@ -143,24 +157,33 @@ void genomeGenerate(Parameters *P) {
 
     time(&rawTime);
     P->inOut->logMain     << timeMonthDayTime(rawTime) <<" ... starting to generate Genome files\n" <<flush;
+
     *P->inOut->logStdOut  << timeMonthDayTime(rawTime) <<" ... starting to generate Genome files\n" <<flush;
+    *P->inOut->logStdOut  << timeMonthDayTime(rawTime) <<" ... i have powers 2 :)\n" <<flush;
+    ostream *lso = P->inOut->logStdOut;
+
+    *lso << "... power level increasing 23 \n" <<flush;
 
     //define some parameters from input parameters
     P->genomeChrBinNbases=1LLU << P->genomeChrBinNbits;
 
     char *G=NULL, *G1=NULL;
     uint nGenomeReal=genomeScanFastaFiles(P,G,false);//first scan the fasta file to find all the sizes
+    *lso  << " genome size: " << nGenomeReal << "\n" <<flush;
+
     P->chrBinFill();
 
     uint L=10000;//maximum length of genome suffix
     uint nG1alloc=(nGenomeReal + L)*2;
+    *lso  << " nG1alloc: " << nG1alloc << "\n" <<flush;
+
     G1=new char[nG1alloc];
     G=G1+L;
 
     memset(G1,GENOME_spacingChar,nG1alloc);//initialize to K-1 all bytes
 
     genomeScanFastaFiles(P,G,true);    //load the genome sequence
-    
+
     if (P->genomeConsensusFile!="-") {//load consensus SNPs
         ifstream &consIn=ifstrOpen(P->genomeConsensusFile, ERROR_OUT, "SOLUTION: check path and permission for the --genomeConsensusFile file" + P->genomeConsensusFile, P);
         
@@ -227,6 +250,11 @@ void genomeGenerate(Parameters *P) {
         exitWithError(errOut.str(),std::cerr, P->inOut->logMain, EXIT_CODE_INPUT_FILES, *P);
     };
 
+    for (uint i = 10000-20; i<10000+10; i++) {
+    	*lso << int(G1[i]) << " " << flush;
+    }
+    *lso << " \n" << flush;
+
     //preparing to generate SA
     for (uint ii=0;ii<N;ii++) {//- strand
         G[N2-1-ii]=G[ii]<4 ? 3-G[ii] : G[ii];
@@ -238,12 +266,20 @@ void genomeGenerate(Parameters *P) {
             P->nSA++;
         };
     };
-
+    *lso << "nSA: " << P->nSA << "\n" << flush;
     P->GstrandBit = (uint) floor(log(N+P->limitSjdbInsertNsj*P->sjdbLength)/log(2))+1;
+    *lso << "GStrandBit: " << (int) P->GstrandBit << "\n" << flush;
     if (P->GstrandBit<32) P->GstrandBit=32; //TODO: use simple access function for SA
+    *lso << "GStrandBit: " << (int) P->GstrandBit << "\n" << flush;
 
     P->GstrandMask = ~(1LLU<<P->GstrandBit);
+    *lso << "GStrandMask: " << bitset<64>(P->GstrandMask) << "\n" << flush;
+
     PackedArray SA1;//SA without sjdb
+    *lso << "~8LLU: " << ~8LL << "\n" << flush;
+    *lso << "sizeof(8LLU): " << sizeof(8LLU) << "\n" << flush;
+    *lso << "bits 8LLU: " << bitset<64>(8LLU) << "\n" << flush;
+
     SA1.defineBits(P->GstrandBit+1,P->nSA);
     PackedArray SA2;//SA with sjdb, reserve more space
     if (P->sjdbInsert.yes)
@@ -255,6 +291,7 @@ void genomeGenerate(Parameters *P) {
     };
 
     P->inOut->logMain  << "Number of SA indices: "<< P->nSA << "\n"<<flush;
+    *P->inOut->logStdOut  << "Number of SA indices: "<< P->nSA << "\n"<<flush;
 
     //sort SA
     time ( &rawTime );
@@ -273,21 +310,39 @@ void genomeGenerate(Parameters *P) {
         //count the number of indices with 4nt prefix
         uint indPrefN=1LLU << 16;
         uint* indPrefCount = new uint [indPrefN];
+        *lso << "indPrefN: " << indPrefN << "\n" << flush;
+
         memset(indPrefCount,0,indPrefN*sizeof(indPrefCount[0]));
+//        for (uint ii=0; ii<30; ii++){
+//        	*lso << indPrefCount[ii] << " " <<flush;
+//        }
+
+
         P->nSA=0;
         for (uint ii=0;ii<N2;ii+=P->genomeSAsparseD) {
             if (G[ii]<4) {
                 uint p1=(G[ii]<<12) + (G[ii-1]<<8) + (G[ii-2]<<4) + G[ii-3];
                 indPrefCount[p1]++;
+//                if (ii<10){
+//                    *lso << int(G[ii]) << int(G[ii-1]) << int(G[ii-2]) << int(G[ii-3]) << "\tp1: " << p1 << "\n" << flush;
+//                }
                 P->nSA++;
             };
         };
 
+        *lso << "P->nSA: " << P->nSA << "\n" << flush;
+
+
         uint saChunkSize=(P->limitGenomeGenerateRAM-nG1alloc)/8/P->runThreadN; //number of SA indexes per chunk
+        *lso  << "chunkSize: " << saChunkSize <<"\n" <<flush;
+
         saChunkSize=saChunkSize*6/10; //allow extra space for qsort
+        //*lso  << "chunkSize: " << saChunkSize <<"\n" <<flush;
+
         //uint saChunkN=((P->nSA/saChunkSize+1)/P->runThreadN+1)*P->runThreadN;//ensure saChunkN is divisible by P->runThreadN
         //saChunkSize=P->nSA/saChunkN+100000;//final chunk size
         if (P->runThreadN>1) saChunkSize=min(saChunkSize,P->nSA/(P->runThreadN-1));
+        *lso  << "sachunkSize: " << saChunkSize <<"\n" <<flush;
 
         uint saChunkN=P->nSA/saChunkSize;//estimate
         uint* indPrefStart = new uint [saChunkN*2]; //start and stop, *2 just in case
@@ -295,8 +350,15 @@ void genomeGenerate(Parameters *P) {
         indPrefStart[0]=0;
         saChunkN=0;//start counting chunks
         uint chunkSize1=indPrefCount[0];
+        *lso  << "saChunkN: " << saChunkN <<"\n" <<flush;
+
         for (uint ii=1; ii<indPrefN; ii++) {
             chunkSize1 += indPrefCount[ii];
+            //*P->inOut->logStdOut  << "nr indPrefCount" << indPrefCount[ii] <<"\n" <<flush;
+            if (indPrefCount[ii] != 0){
+                //*lso  << "ii: " << ii <<"\n" <<flush;
+            }
+
             if (chunkSize1 > saChunkSize) {
                 saChunkN++;
                 indPrefStart[saChunkN]=ii;
@@ -313,6 +375,7 @@ void genomeGenerate(Parameters *P) {
         time ( &rawTime );
         P->inOut->logMain     << timeMonthDayTime(rawTime) <<" ... sorting Suffix Array chunks and saving them to disk...\n" <<flush;
         *P->inOut->logStdOut  << timeMonthDayTime(rawTime) <<" ... sorting Suffix Array chunks and saving them to disk...\n" <<flush;
+        *P->inOut->logStdOut  << timeMonthDayTime(rawTime) <<" number of chunks " << saChunkN <<"\n" <<flush;
 
         #pragma omp parallel for num_threads(P->runThreadN) ordered schedule(dynamic,1)
         for (int iChunk=0; iChunk < (int) saChunkN; iChunk++) {//start the chunk cycle: sort each chunk with qsort and write to a file
@@ -376,7 +439,7 @@ void genomeGenerate(Parameters *P) {
                 packedInd += chunkBytesN/sizeof(saIn[0]);
             };
             saChunkFile.close();
-            remove(saChunkFileNameStream.str().c_str());//remove the chunk file
+            //remove(saChunkFileNameStream.str().c_str());//remove the chunk file
         };
 
         #ifdef genenomeGenerate_SA_textOutput
